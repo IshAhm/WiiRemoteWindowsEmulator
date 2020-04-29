@@ -1,0 +1,243 @@
+﻿var.calibframes = 300
+mouse.LeftButton = wiimote.A
+mouse.RightButton = wiimote.Minus
+mouse.MiddleButton = wiimote.Down
+
+if var.framenumberstart < var.calibframes  { //this sets the initial frames, if the script contains calibration for the accelerometer noise, this should be minimum 300
+   if var.framenumberstart = var.calibframes/2 { //this resets the calibration midway which enables you (when there is calibration implemented) to shake the IMU until that point and leave it stattic afterwards. NOTE: do not touch the IMU until its built-in calibtation finishes (for the wiimote that is when only the first light is on). The procedure is (1) Wait for first wiimote light to be on; (2) shake IMU and leave it on the table before counter reaches 150; (3) leave IMU still untill counter reaches 300
+   // all variables are reset midway, this also enables re-calibration by pushing the home key on the wiimote
+//   var.maxdeltagz = 0  // only needed in case calibration is implemented. it stores the maximum noise
+//   var.maxdeltagy = 0  // only needed in case calibration is implemented. it stores the maximum noise
+//   var.deadbandmagnitude = 1 // this enables you to shrink or expand the threshold for the low-pass filter on the acceletometer data, if the version of the script has it    = 0.01 radians // this is the default magnitude of the step that is used in the part that aligns the gyro to the accelerometer data, in the script it is dynamically adjusted each frame
+   var.corrstep = 0.01 radians // this is the default magnitude of the step that is used in the part that aligns the gyro to the accelerometer data, in the script it is dynamically adjusted each frame
+   var.corrstepnumber = 20 // this is the speed (rather de-celeration) with which the gyro is aligned to the accelerometer data
+   var.deltatolerance = 0.001 radians // this variable shrinks or expands the buffer between the accelerometer and gyro data beyond which no further alignment is done
+   var.sincosswitch = Sin(PI()/4) // this is the maximum G readings beyond which the calculation switches from sin to cos and from tan to cotan
+   var.sensitivity = 600 // this is the scaling of your movement onto the variable that you want to manipulate, this is the mouse sensitivity
+   var.sensitivityobj = 1  // this is the scaling of your movement onto the variable that you want to manipulate, this is the object sensitivity
+   var.cumulpitchspeedacc = 0 // this is the accelerometer-measured pitch
+   var.cumulpitchspeedgyro = 0 // this is the gyro-measured pitch
+   var.corrcumulpitchspeedgyro = 0 // this is the final corrected pitch using accelerometer and gyro readings
+   var.deltacumulpitchspeedgyro = 0 // in the script this variable measures the deviation of the gyro measured pitch since the last point where it was aligned to the accelerometer data
+   var.delta = 0 // this is the variable that accumulates the changes to the gyro pitch per frame and the corrections from alignmeent to the accelerometer readings
+   var.maxtrackingpitch = 3 in radians // this is the value beyond which the script does not align gyro to accelerometer data, it prevents > 180 degree errors and it is not really practical to have it for HMD and wiigun purposes
+   var.oldcumulpitchspeedgyro = 0  //this variable is used to measure the pitch movement since the last realignment
+   var.alignmentmarker = 0.05 radians // this is the pitch movement since the last realignment beyond which the next realignment is triggered
+   var.switcher +=1 // this is the value that switches on and off the dynamic realignment of the mousedirectinput to the actual pitch, it is necessary because mousedirectinput accepts only whole numbers and the rounding leads to drift from the real corrected pitch data
+//   var.maxmousetrack = Sin(PI()/3) // this is a value that blocks the mouse movement beyond certain pitch. Although pitch realignment  is allowed up to 3 radians, most games do not allow a pitch greater than say 60 or 70 degrees, if in-game those are exceeded, the game view will not move, whereas the mousedirectinput will continue to change leading to misalignment in-game, if you want to eliminate it, just increase it to a large number
+   var.maxmousetrack = 30 // this is a value that blocks the mouse movement beyond certain pitch. Although pitch realignment  is allowed up to 3 radians, most games do not allow a pitch greater than say 60 or 70 degrees, if in-game those are exceeded, the game view will not move, whereas the mousedirectinput will continue to change leading to misalignment in-game, if you want to eliminate it, just increase it to a large number
+   var.corr = "" // this is a marker for the debug that enables you to see whether the alignment script for gyro to accelerometer data is on or off for the particular frame//   var.cumulrollspeedgyro = 0
+   var.filter = "" // also for debugging
+   var.deltaacc = 0 // this is used in the version of the script that aligns gyro to accelerometer readinngs upon change of the accelerometer readings above the measured noise threshold
+   var.smoothgz = 0 // explained later
+   var.smoothgy = 0 // explained later
+   var.smoothgx = 0 // explained later
+   var.smoothgyx = 0 // explained later
+   var.deltaaccgyro = 0 // this is the difference between gyro and accelerometer readings
+   var.cumulrollspeedgyro = 0 // tracking roll is needed to disable the alignment beyond certain roll
+   var.allowedeltaroll = 0.3 radians // tracking roll is needed to disable the alignment beyond certain roll
+   var.zeroroll = 0.3 radians // the gyro readings for the toll are reset around the horizontal position to svoid drift
+   var.corryaw = 0  // this is a generic attempt to minimise horisonral yaw drift
+//   var.registeronce = false  // only for debugging meant to measure the misaligment between gyro and accelerometer readings when the alignmrnt starts
+   var.deltaratio = 0  //this is also a generic attempt to "enhance" the pitch readings before alignment, which should result in fewer alignment steps
+   }
+
+// this is the calibration part of the script that maay be used in another version, the assignment is both in the calibration part and is then replicated in the main part of the script
+//   var.smoothgz = wiimote.gz
+//   var.smoothgy = wiimote.gy
+//   var.smoothgx = wiimote.gx
+//   var.smoothgyx = sign(wiimote.gy)*(wiimote.gy^2+wiimote.gx^2)^(1/2)
+
+
+//   if abs(Delta(var.smoothgz))>abs(var.maxdeltagz) { //this measures the maximum accelerometer-measured noise  during calibration
+//      var.maxdeltagz=Delta(var.smoothgz)
+//      var.maxdeltagy = var.maxdeltagz
+//   }
+
+   var.framenumberstart+=1
+
+//   debug = "fr="+var.framenumberstart+" noise="+var.maxdeltagz // also useful if there is a calibration part
+
+} else {
+
+// this assignment to a smoothg variable is not really a necessary step since this is then assigned to corrg variable, but it it gives better flexibility for modding the script with that additional smoothing step by e.g. adding a smooth function here (which creates laggier alignment though)
+   var.smoothgz = wiimote.gz
+   var.smoothgy = wiimote.gy
+   var.smoothgx = wiimote.gx
+   var.smoothgyx = sign(wiimote.gy)*(1-wiimote.gz^2)^(1/2) // the smoothgyx is the linear addition of the y and z vectors: sign(wiimote.gy)*(wiimote.gy^2+wiimote.gx^2)^(1/2). The sign(wiimote.gy)*(1-wiimote.gz^2)^(1/2) should be the same as the addition of the two vectors, but with less noise
+
+
+// this section reads and assigns the gyro data. The var.cumulpitchspeedgyro accumulates gyro readings to approximate the uncorrected pitch. The Delta(timestamp) is meant to correct slight framerate hitches (common for the wiimote). Without the Removeunits function you get strangely small results of that equation. I believe the reason is the multiplication of speed and time bugs out GlovePIE. Alternative apprach is to multiply by *6000 : var.corrcumulpitchspeedgyro += (wiimote.PitchSpeed)*Delta(timestamp)*6000
+   var.cumulrollspeedgyro += (Removeunits(wiimote.RollSpeed in radians per second)*Removeunits(Delta(timestamp))) // this is needed to block alignment after certain roll since it messes the gy readings. The alternative is to use the combined gy+gx vector readings, but this doubles the noise especially around 90 degrees
+   var.delta = (Removeunits(wiimote.PitchSpeed in radians per second)*Removeunits(Delta(timestamp)))// this is the variable that stores the changes to be made to the pitch at the end of the frame, it absorbs the effect of the gyro readinds here and later gets corrected if the alignment of gyro and accelerometer data is triggered for the particular frame
+   var.deltasup = var.delta*var.deltaratio //this is a generic attempt to "enhance" the pitch readings before alignment, which should result in fewer alignment steps. The default at the  start is 0, but you can change it in the scrript or test other values by pressing up/down on the wiimote
+   var.delta += var.deltasup // adding of the correction to delta
+   var.cumulpitchspeedgyro += (Removeunits(wiimote.PitchSpeed in radians per second)*Removeunits(Delta(timestamp))) +var.deltasup // this is the variable that accumulates and stores the original gyro readings and is independent from the main value that ges corrected - var.corrcumulpitchspeedgyro
+
+// this section normalises the readings to 1g if they exceed 1g (sometimes they gat e.g. 1.05)
+   if abs(var.smoothgz)>1 { // this normalizes gz to 1
+         var.corrgz = sign(var.smoothgz)*1
+      } else {
+         var.corrgz = var.smoothgz
+      }
+
+   if abs(var.smoothgy)>1 { // this normalizes gz to 1
+         var.corrgy = sign(var.smoothgy)*1
+      } else {
+         var.corrgy = var.smoothgy
+      }
+
+   if abs(var.smoothgx)>1 { // this normalizes gz to 1
+         var.corrgx = sign(var.smoothgx)*1
+      } else {
+         var.corrgx = var.smoothgx
+      }
+
+   if abs(var.smoothgyx)>1 { // this normalizes gy and gx to 1
+         var.corrgyx = sign(var.smoothgyx)*1
+      } else {
+         var.corrgyx = var.smoothgyx
+      }
+
+// this section converts the accelerometer readings into pitch based on the g readings. When the version of the script uses var.corrgyx this enables the roll (which takes out some of the y readings otherwise) to count also as y readings which in term enables the pitch to be measured correctly even if there is some roll.
+   if (abs(var.corrgz)<=var.sincosswitch) { // this switches between aSIN and aCOS (or between aTAN and aCOTAN). It appears that aSIN,aCOS gives least noise around +/- 90 degrees,
+//      var.deltaacc = Delta(var.smoothgz)   // these are used if the script has calibration and activates the alignment after change to the accelerometer readings above the noise threshold
+//      var.maxdeltag = var.maxdeltagz  // these are used if the script has calibration and activates the alignment after change to the accelerometer readings above the noise threshold
+//      if (abs(var.deltaacc))>(abs(var.maxdeltag)*var.deadbandmagnitude)  { //this is the low-pass filter for the accelerometer data. It uses the noise measured in the calibration as a threshold. That threshold can be shrunk or expanded with the var.deadbandmagnitude variable. It is commented out since that step makes the alignment less responsive without bringing too much additional benefit
+         if (var.corrgy>0) { //this is the check that is meant to enable the correction of angles beyond 90 degreess
+            var.cumulpitchspeedacc = aSin(var.corrgz) in radians // var.cumulpitchspeedacc = aSin(var.corrgz) in radians is the acceelerometer-measured pitch for pitch below +/-90
+            var.corr = "SIN"   // for debugging
+         } else {
+            if (abs(var.corrcumulpitchspeedgyro)>Pi()/2) { // this check is made to prevent rolling the wiimote >90 degrees from the initial position to bea read as > degree pitch (in both cases the final accelerometer readings are the same but the difference is that if pitch is >90 degrees, the var.corrcumulpitchspeedgyro shows that the wiimote has travelled all the way to +/- 90 degree)
+               var.cumulpitchspeedacc = sign(var.corrgz)*pi()-aSin(var.corrgz) in radians // this is the correction for andles beyond 90 degrees
+               var.corr = "SIN PI"  // for debugging
+            } else {
+              var.corr = "DISREGARD"  // for debugging
+            }
+         }
+//      }
+   } else {
+//      var.deltaacc = Delta(var.smoothgy)  // these are used if the script has calibration and activates the alignment after change to the accelerometer readings above the noise threshold
+//      var.maxdeltag = var.maxdeltagy  // these are used if the script has calibration and activates the alignment after change to the accelerometer readings above the noise threshold
+//      if (var.deltaacc)>(abs(var.maxdeltag)*var.deadbandmagnitude)  { //this is the low-pass filter for the accelerometer data. It uses the noise measured in the calibration as a threshold. That threshold can be shrunk or expanded with the var.deadbandmagnitude variable. It is commented out since that step makes the alignment less responsive without bringing too much additional benefit
+         var.cumulpitchspeedacc = sign(var.corrgz)*aCos(var.corrgy) in radians // sign(var.corrgz)*aCos(var.corrgy) in radians is used for angles +/- 45 degrees
+         var.corr = "COS" // for debugging
+//      }
+   }
+
+   if (abs(var.corrgx) <var.zeroroll) {  // this is the part that resets the roll measurements
+      var.cumulrollspeedgyro = 0
+   }
+
+   var.deltaaccgyro = var.cumulpitchspeedacc-var.corrcumulpitchspeedgyro // this measures at each frame the difference between the accelerometer and gyro readings
+   var.deltacumulpitchspeedgyro = var.oldcumulpitchspeedgyro - var.cumulpitchspeedgyro  // this measures the deviation of the gyro measured pitch since the last point where it was aligned to the accelerometer data
+   var.totaldeltaaccgyro = var.corrcumulpitchspeedgyro - var.cumulpitchspeedgyro // this is used for debugging the difference between the original nd the corrected gyro data
+
+   if (abs(var.deltacumulpitchspeedgyro)>var.alignmentmarker) { // this sets the trigger for the alignment section of the script
+      var.startcorr = true
+   }
+
+// this is commented out since it is an alternative approach of accelerometer fixed markers, it creates much more jitter
+//   if (0<=var.corrgz<(Pi()/18)) {
+//      var.marker = "first marker"
+//   } elseif ((Pi()/18)<=var.corrgz<(Pi()/9)) {
+//      var.marker = "second marker"
+//   } elseif ((Pi()/9)<=var.corrgz<(Pi()/6)) {
+//      var.marker = "third marker"
+//   } elseif (-(Pi()/18)<=var.corrgz<0) {
+//      var.marker = "-first marker"
+//   } elseif (-(Pi()/9)<=var.corrgz<(Pi()/18)) {
+//      var.marker = "-second marker"
+//   } elseif (-(Pi()/6)<=var.corrgz<(Pi()/9)) {
+//      var.marker = "-third marker"
+//   } else {
+//      var.marker = "outside"
+//   }
+
+//   if (not (var.marker = var.oldmarker)) {
+// //    var.startcorr = true
+//      var.marker2 = "change"
+//      debug = var.marker2
+//   } else {
+//      debug = var.marker
+//   }
+
+//   var.oldmarker = var.marker
+
+
+   if ((var.startcorr = true) and (abs(var.corrcumulpitchspeedgyro)<var.maxtrackingpitch) and (abs(var.cumulrollspeedgyro)<var.allowedeltaroll)) { // this activates the script that gradually alignes gyro to accelerometer data when the gyro readings have moved beyond the marker since the last alignment. The dynamic alignment also de-activates beyond the maximum allowed acceleromer-measured pitch (3 radians). It also blocks tracking when the roll exceeds a ceiling/
+      if (Sin(abs(var.deltaaccgyro)) > var.deltatolerance) {  // this stops the alignment after the difference between the accelerometer and gyro readings is decreased under var.deltatolerance
+//         if (var.registeronce = false) { // used for debugging not necessary in the final script
+//            var.registerdeltaaccgyro = var.deltaaccgyro //for debugging
+//            var.registeronce = true
+//         }
+         var.corrstep = abs(var.deltaaccgyro/var.corrstepnumber) // this sets dynamically each frame the extent of the correction/alignment towards the accelerometer data. The bigger the difference between gyro and accelerometer readings var.deltaaccgyro, the bigger the alignment step per frame (which means the alignment is actually decelerating over time, which is what we want). With the var.corrstepnumber you can tweak yourself that deceleration further. The default is 5 (float, so can also be e.g. 4.7), if you want faster alignment, set it below 5, of you want smooter, but laggier alignment, set it above 5.
+//         if (wiimote.B=false) { // this enabled you to see only the effect of uncorrected gro readings if you hold the B button
+            var.delta += sign(var.deltaaccgyro)*var.corrstep
+//         }
+         var.status = "CORRECT" // for debugging
+         var.step +=1  // for debuggingg
+      } else {
+         var.oldcumulpitchspeedgyro = var.cumulpitchspeedgyro // this resets the dybamic marker after the algnment has finished
+         var.status = "RESET"  // for debugging
+         var.step = 0  // for debugging
+//         var.registeronce = false  // used for debugging not necessary in the final script
+         var.startcorr = false // this switches off the aliggnment untill the next marker
+      }
+   }
+
+   var.corrcumulpitchspeedgyro += var.delta // this corrects/aligns the gyro readings to the accelerometer reading by assigning the corrected delta to the final pitch variable
+
+   var.corrcumulpitchspeedgyrobig = -var.corrcumulpitchspeedgyro*var.sensitivity // for debugging when you compare mouse movement to object movement
+
+//   Obj1.roll = (var.corrcumulpitchspeedgyro in radians)*var.sensitivityobj //this assigns the corrected pitch to the object
+
+   if (abs(var.corrcumulpitchspeedgyro)<var.maxmousetrack and (odd(var.switcher))) { // this is a check that blocks the mouse movement beyond certain pitch. Although pitch realignment  is allowed up to 3 radians, most games do not allow a pitch greater than say 60 or 70 degrees, if in-game those are exceeded, the game view will not move, whereas the mousedirectinput will continue to change which may lead to misalignment in-game, if you want to eliminate it, just increase it to a large number. The other check enables the switching of the wiiimote tracking
+      var.fake -= Removeunits(var.delta)*var.sensitivity // var.fake is a value that retains the real data that is transferred to mousedurectinput in order to assign it to mousedirectinpit each frame, thus avoiding accumulation of rounding
+//      var.fakeround -= round(Removeunits(var.delta)*var.sensitivity) // the rounding makes this variable behave like MouseDirectInput, for debugging
+      Mouse.DirectinputY = var.fake //this assigns the corrected updated non-rounded pitch (var.fake) to the mouse. The MousedirectInput accepts only whole numbers, so it rounds out this assignment. Therefore, the use of the var.fake is necessary
+      if (abs(wiimote.YawSpeed)>0) {
+         var.fakex += (Removeunits(wiimote.YawSpeed in radians per second)*Removeunits(Delta(timestamp)))*var.sensitivity+var.corryaw  // this is a simple yaw assignment of gyro readings to the mouse horisontal movement, it is not part of the core script
+         Mouse.DirectinputX = var.fakex // the same approach of passing through a fake variable that stores unrounded data is applied
+      }
+   } else {
+      var.fake = Mouse.DirectinputY  // resets the difference when the script is switched off with the home button (changes var.switcher)
+      var.fakex = Mouse.DirectinputX  // resets the difference when the script is switched off with the home button (changes var.switcher)
+   }
+
+   if clicked(wiimote.Home) { //this restarts the gz calibration and resets all variables to those assigned in the beginning
+      var.framenumberstart = 0
+   }
+
+   if clicked(wiimote.Right) {  // these are the wiimote buttons that you may use to manually correct if you notice cinsistent drift
+      var.corryaw +=0.01
+   }
+
+   if clicked(wiimote.Left) {   // these are the wiimote buttons that you may use to manually correct if you notice cinsistent drift
+      var.corryaw -=0.01
+   }
+
+   if clicked(wiimote.Up) {  // these are the wiimote buttons that you may use to manually correct if you notice cinsistent drift
+      var.deltaratio +=0.05
+   }
+
+   if clicked(wiimote.Down) {  // these are the wiimote buttons that you may use to manually correct if you notice cinsistent drift
+      var.deltaratio -=0.05
+   }
+
+   Debug = ""+var.corr+" "+var.status+" step"+var.step+" TotalD"+ var.totaldeltaaccgyro+" "+var.deltaratio+" Dgyr" + var.deltacumulpitchspeedgyro+" acc-gyr"+Removeunits(var.deltaaccgyro)+" ac" + (Removeunits(var.cumulpitchspeedacc)) + " gyr" + (Removeunits(var.cumulpitchspeedgyro)) + " cor" + (Removeunits(var.corrcumulpitchspeedgyro))+" gz" + var.corrgz + " gy" + var.corrgy+ " gx" + var.corrgx +" CorrYaw"+var.corryaw
+
+
+}
+
+
+//Debug = ""+var.corr+" "+ (abs(var.cumulrollspeedgyro)<var.allowedeltaroll) and (var.corrcumulpitchspeedgyro<var.maxtrackingpitch)+" roll"+var.cumulrollspeedgyro+" Dgyr" + var.deltacumulpitchspeedgyro+" acc-gyr"+Removeunits(var.deltaaccgyro)+" gz" + var.corrgz + " gy" + var.corrgy+ " gx" + var.corrgx + " ac" + (Removeunits(var.cumulpitchspeedacc)) + " gyr" + (Removeunits(var.cumulpitchspeedgyro)) + " cor" + (Removeunits(var.corrcumulpitchspeedgyro))
+
+//Debug = ""+var.corr+" "+var.status+" step"+var.step+" TotalD"+ var.totaldeltaaccgyro+" RegD"+var.registerdeltaaccgyro+" Dgyr" + var.deltacumulpitchspeedgyro+" acc-gyr"+Removeunits(var.deltaaccgyro)+" ac" + (Removeunits(var.cumulpitchspeedacc)) + " gyr" + (Removeunits(var.cumulpitchspeedgyro)) + " cor" + (Removeunits(var.corrcumulpitchspeedgyro))+" gz" + var.corrgz + " gy" + var.corrgy+ " gx" + var.corrgx +" gyx"+var.smoothgyx+" "+var.corryaw
+
+//debug = ""+abs(var.deltaDiFake)+" real="+Mouse.DirectinputY+" fake="+var.fake+ " fakeround="+var.fakeround+" cor" + (Removeunits(var.corrcumulpitchspeedgyro))+" corBIG*"+var.corrcumulpitchspeedgyrobig
+
+//debug = wiimote.gz+" x^2="+sign(wiimote.gy)*(1-wiimote.gz^2)^(1/2)+" yz^2="+sign(wiimote.gy)*(wiimote.gy^2+wiimote.gx^2)^(1/2)
+
+//debug = var.marker+" "+var.corrgz+" "+(not(var.marker = var.oldmarker))
+
